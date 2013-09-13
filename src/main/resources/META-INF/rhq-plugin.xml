@@ -1,0 +1,1063 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<plugin name="LinuxNetworkMonitoring"
+        displayName="Linux Network Monitoring"
+        description="Monitors multiple Linux network statistics using a shell script"
+        package="org.rhq.plugins.script"
+		    version="1.0"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="urn:xmlns:rhq-plugin"
+        xmlns:c="urn:xmlns:rhq-configuration">
+
+   <server name="Linux Network Monitor Script"
+           discovery="ScriptDiscoveryComponent"
+           class="ScriptServerComponent"
+           description="A resource with a command line executable or script as its management interface"
+           supportsManualAdd="true">
+
+      <plugin-configuration>
+         <c:group name="executableEnvironment" displayName="Executable Runtime Environment">
+            <c:simple-property name="executable" required="true" description="The full path to the command line executable or script" />
+            <c:simple-property name="workingDirectory" required="false" description="When the executable is invoked, this will be its working directory." />
+            <c:list-property name="environmentVariables" required="false" description="Environment variables that are set when executing the executable">
+               <c:map-property name="environmentVariable">
+                  <c:simple-property name="name" type="string" required="true" summary="true" description="Name of the environment variable"/>
+                  <c:simple-property name="value" type="string" required="true" summary="true" description="Value of the environment variable" />
+               </c:map-property>
+            </c:list-property>
+         </c:group>
+         <c:group name="avail" displayName="Availability Definition">
+            <c:simple-property name="availabilityExecuteCheck" required="false" type="boolean" description="If specified and true, the ability to successfully execute the executable can determine whether or not the managed resource is considered up and available. If you set this to true, you normally do not set the availability regex settings in order to allow availability to be determined based solely on the successful execution, regardless of the exit code or output. If this is false, setting one of the avail regex settings will override it as if it were true."/>
+            <c:simple-property name="availabilityExitCodeRegex" required="false" description="If specified, the executable must return an exit code that matches this regular expression if the managed resource is to be considered up and available"/>
+            <c:simple-property name="availabilityOutputRegex" required="false" description="If specified, the executable must output text that matches this regular expression if the managed resource is to be considered up and available"/>
+            <c:simple-property name="availabilityArguments" required="false" description="If the executable needs to be executed in order to determine availability, these are the arguments that will be passed to the executable. If you do not specify the regex settings and you set the execute check setting to false, the executable will not be executed and these arguments will not be used - in this case, availability will be determined by the mere existence of the executable file."/>
+         </c:group>
+         <c:group name="version" displayName="Version Definition">
+            <c:simple-property name="versionArguments" required="false" description="The arguments to pass to the executable that will help determine the version of the managed resource"/>
+            <c:simple-property name="versionRegex" required="false" description="The regex that can pick out the version from the executable output. If the regex has a captured group, its matched content will be used as the version. If there is no captured group, the entire output will be used as the version."/>
+            <c:simple-property name="fixedVersion" required="false" description="If specified, this will be the version of the managed resource - the executable will not be invoked to determine it." />
+         </c:group>
+         <c:group name="description" displayName="Description Definition">
+            <c:simple-property name="descriptionArguments" required="false" description="The arguments to pass to the executable that will help determine the managed resource description. This can be arguments to enable verbose version output."/>
+            <c:simple-property name="descriptionRegex" required="false" description="The regex that can pick out the description from the executable output. If the regex has a captured group, its matched content will be used as the description. If there is no captured group, the entire output will be used as the description."/>
+            <c:simple-property name="fixedDescription" required="false" description="If specified, this will be the description of the managed resource - the executable will not be invoked to determine it." />
+         </c:group>
+      </plugin-configuration>
+
+      <!--
+         The process-scan element requests the plugin container provide the discovery component for
+         this resource type with the results of scanning the machine for running processes. If there is
+         no use for this in a given resource type, this entry may be omitted.
+      -->
+      <!--
+      <process-scan name="ScanIdentifier" query="process|basename|match=^java.*,arg|org.jboss.Main|match=.*"/>
+      -->
+
+      <operation name="execute"
+                 description="Executes the executable with a set of arguments and returns the output and exit code.">
+         <parameters>
+               <c:simple-property name="arguments" required="false" description="The arguments to pass to the executable." />
+               <c:simple-property name="waitTime" required="false" type="long" description="The number of seconds to wait for the process to end. If 0 or less, the operation will return immediately without waiting for the script to complete. Default is one hour." />
+               <c:simple-property name="captureOutput" required="false" type="boolean" description="If true, the script's output will be captured and returned. Default is true." />
+               <c:simple-property name="killOnTimeout" required="false" type="boolean" description="If true, and if waitTime parameter is greater than 0, the script will be forcibly terminated if the wait time expires before the script finishes. In other words, the script process will be killed if it times out. Default is true." />
+         </parameters>
+         <results>
+             <c:simple-property name="exitCode" type="integer" required="false" description="The exit code returned when the script terminated. This will not be set if the script was not waited for (i.e. the wait time was 0) or if the wait time expired before the script finished."/>
+             <c:simple-property name="output" type="longString" required="false" description="The output of the script. This will not be set if the operation was told not to capture the output."/>
+         </results>
+      </operation>
+
+      <!--
+         For each measurement that should be collected for resources of this type, a metric element is added.
+         In addition to identifying the metric, a default collection interval and whether or not the
+         metric is even collected by default are indicated. If the resource has no measurements to be
+         collected, these elements may be omitted. Note that the metric property string contains information
+         like the arguments to pass to the executable and an optional regex to use to pick out the metric
+         value from the output of the executable. The arguments are specified inside curly braces. If the metric
+         value is the entire output, you do not have to specify a regex, the output will be assumed to be
+         the value of the metric in that case. If regex is explicitly the string "exitcode", the metric value will be
+         the CLI executable's exitcode value.
+      -->
+
+      <metric property="{}|.*SyncookiesSent=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="SyncookiesSent"
+              description="SYN cookies sent"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*SyncookiesRecv=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="SyncookiesRecv"
+              description="SYN cookies received"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*SyncookiesFailed=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="SyncookiesFailed"
+              description="invalid SYN cookies received"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*EmbryonicRsts=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="EmbryonicRsts"
+              description="resets received for embryonic SYN_RECV sockets"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*PruneCalled=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="PruneCalled"
+              description="packets pruned from receive queue because of socket buffer overrun"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*RcvPruned=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="RcvPruned"
+              description="packets pruned from receive queue"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*OfoPruned=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="OfoPruned"
+              description="packets dropped from out-of-order queue because of socket buffer overrun"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*OutOfWindowIcmps=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="OutOfWindowIcmps"
+              description="ICMP packets dropped because they were out-of-window"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*LockDroppedIcmps=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="LockDroppedIcmps"
+              description="ICMP packets dropped because socket was locked"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TW=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TW"
+              description="TCP sockets finished time wait in fast timer"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TWRecycled=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TWRecycled"
+              description="time wait sockets recycled by time stamp"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TWKilled=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TWKilled"
+              description="TCP sockets finished time wait in slow timer"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*PAWSPassive=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="PAWSPassive"
+              description="passive connections rejected because of time stamp"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*PAWSActive=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="PAWSActive"
+              description="active connections rejected because of time stamp"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*PAWSEstab=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="PAWSEstab"
+              description="packets rejects in established connections because of timestamp"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*DelayedACKs=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="DelayedACKs"
+              description="delayed acks sent"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*DelayedACKLocked=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="DelayedACKLocked"
+              description="delayed acks further delayed because of locked socket"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*DelayedACKLost=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="DelayedACKLost"
+              description="Quick ack mode was activated n times"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*ListenOverflows=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="ListenOverflows"
+              description="times the listen queue of a socket overflowed"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*ListenDrops=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="ListenDrops"
+              description="SYNs to LISTEN sockets dropped"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPPrequeued=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPPrequeued"
+              description="packets directly queued to recvmsg prequeue."
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPDirectCopyFromBacklog=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPDirectCopyFromBacklog"
+              description="bytes directly in process context from backlog"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPDirectCopyFromPrequeue=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPDirectCopyFromPrequeue"
+              description="bytes directly received in process context from prequeue"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPPrequeueDropped=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPPrequeueDropped"
+              description="packets dropped from prequeue"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPHPHits=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPHPHits"
+              description="packet headers predicted number"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPHPHitsToUser=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPHPHitsToUser"
+              description="packets header predicted and directly queued to user"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*SockMallocOOM=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="SockMallocOOM"
+              description="Ran n times out of system memory during packet sending"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPPureAcks=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPPureAcks"
+              description="acknowledgments not containing data payload received"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPHPAcks=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPHPAcks"
+              description="predicted acknowledgments"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPRenoRecovery=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPRenoRecovery"
+              description="times recovered from packet loss due to fast retransmit"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPSackRecovery=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPSackRecovery"
+              description="times recovered from packet loss by selective acknowledgements"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPSACKReneging=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPSACKReneging"
+              description="bad SACK blocks received"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPFACKReorder=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPFACKReorder"
+              description="Detected reordering n times using FACK"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPSACKReorder=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPSACKReorder"
+              description="Detected reordering n times using SACK"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPTSReorder=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPTSReorder"
+              description="Detected reordering n times using time stamp"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPRenoReorder=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPRenoReorder"
+              description="Detected reordering n times using reno fast retransmit"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPFullUndo=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPFullUndo"
+              description="congestion windows fully recovered without slow start"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPPartialUndo=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPPartialUndo"
+              description="congestion windows partially recovered using Hoe heuristic"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPDSackUndo=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPDSackUndo"
+              description="congestion window recovered without slow start using DSACK"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPLossUndo=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPLossUndo"
+              description="congestion windows recovered without slow start after partial ack"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPLostRetransmits=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPLostRetransmits"
+              description="retransmits lost"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPRenoFailures=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPRenoFailures"
+              description="timeouts after reno fast retransmit"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPSackFailures=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPSackFailures"
+              description="timeouts after SACK recovery"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPLossFailures=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPLossFailures"
+              description="timeouts in loss state"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPFastRetrans=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPFastRetrans"
+              description="fast retransmits"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPForwardRetrans=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPForwardRetrans"
+              description="forward retransmits"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPSlowStartRetrans=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPSlowStartRetrans"
+              description="retransmits in slow start"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPTimeouts=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPTimeouts"
+              description="other TCP timeouts"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPRenoRecoveryFailed=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPRenoRecoveryFailed"
+              description="reno fast retransmits failed"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPSackRecoveryFail=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPSackRecoveryFail"
+              description="SACK retransmits failed"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPSchedulerFailed=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPSchedulerFailed"
+              description="times receiver scheduled too late for direct processing"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPRcvCollapsed=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPRcvCollapsed"
+              description="packets collapsed in receive queue due to low socket buffer"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPDSACKOldSent=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPDSACKOldSent"
+              description="DSACKs sent for old packets"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPDSACKOfoSent=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPDSACKOfoSent"
+              description="DSACKs sent for out of order packets"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPDSACKRecv=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPDSACKRecv"
+              description="DSACKs received"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPDSACKOfoRecv=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPDSACKOfoRecv"
+              description="DSACKs for out of order packets received"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPAbortOnSyn=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPAbortOnSyn"
+              description="connections reset due to unexpected SYN"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPAbortOnData=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPAbortOnData"
+              description="connections reset due to unexpected data"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPAbortOnClose=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPAbortOnClose"
+              description="connections reset due to early user close"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPAbortOnMemory=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPAbortOnMemory"
+              description="connections aborted due to memory pressure"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPAbortOnTimeout=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPAbortOnTimeout"
+              description="connections aborted due to timeout"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPAbortOnLinger=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPAbortOnLinger"
+              description="connections aborted after user close in linger timeout"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPAbortFailed=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPAbortFailed"
+              description="times unabled to send RST due to no memory"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPMemoryPressures=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPMemoryPressures"
+              description="TCP ran low on memory n times"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPLoss=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPLoss"
+              description="TCP data loss events"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPDSACKUndo=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPDSACKUndo"
+              description="congestion windows recovered without slow start by DSACK,"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPRenoRecoveryFail=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPRenoRecoveryFail"
+              description="classic Reno fast retransmits failed"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*ArpFilter=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="ArpFilter"
+              description="ArpFilter"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPDSACKUndo=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPDSACKUndo"
+              description="TCPDSACKUndo"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPLostRetransmit=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPLostRetransmit"
+              description="TCPLostRetransmit"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPSACKDiscard=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPSACKDiscard"
+              description="TCPSACKDiscard"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPDSACKIgnoredOld=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPDSACKIgnoredOld"
+              description="TCPDSACKIgnoredOld"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPDSACKIgnoredNoUndo=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPDSACKIgnoredNoUndo"
+              description="TCPDSACKIgnoredNoUndo"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPSpuriousRTOs=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPSpuriousRTOs"
+              description="TCPSpuriousRTOs"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPMD5NotFound=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPMD5NotFound"
+              description="TCPMD5NotFound"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPMD5Unexpected=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPMD5Unexpected"
+              description="TCPMD5Unexpected"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPSackShifted=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPSackShifted"
+              description="TCPSackShifted"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPSackMerged=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPSackMerged"
+              description="TCPSackMerged"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPSackShiftFallback=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPSackShiftFallback"
+              description="TCPSackShiftFallback"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPBacklogDrop=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPBacklogDrop"
+              description="TCPBacklogDrop"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*TCPMinTTLDrop=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="TCPMinTTLDrop"
+              description="TCPMinTTLDrop"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*InNoRoutes=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="InNoRoutes"
+              description="InNoRoutes"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*InTruncatedPkts=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="InTruncatedPkts"
+              description="InTruncatedPkts"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*InMcastPkts=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="InMcastPkts"
+              description="InMcastPkts"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*OutMcastPkts=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="OutMcastPkts"
+              description="OutMcastPkts"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*InBcastPkts=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="InBcastPkts"
+              description="InBcastPkts"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*OutBcastPkts=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="OutBcastPkts"
+              description="OutBcastPkts"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*InOctets=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="InOctets"
+              description="InOctets"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*OutOctets=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="OutOctets"
+              description="OutOctets"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*InMcastOctets=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="InMcastOctets"
+              description="InMcastOctets"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*OutMcastOctets=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="OutMcastOctets"
+              description="OutMcastOctets"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*InBcastOctets=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="InBcastOctets"
+              description="InBcastOctets"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*OutBcastOctets=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="OutBcastOctets"
+              description="OutBcastOctets"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*QDiscBacklogBytes=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="QDiscBacklogBytes"
+              description="QDiscBacklogBytes"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*QDiscBacklogPackets=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="QDiscBacklogPackets"
+              description="QDiscBacklogPackets"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*QDiscRequeues=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="QDiscRequeues"
+              description="QDiscRequeues"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*QDiscDropped=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="QDiscDropped"
+              description="QDiscDropped"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+      <metric property="{}|.*QDiscOverlimits=(\p{Digit}+).*"
+              dataType="measurement"
+              displayName="QDiscOverlimits"
+              description="QDiscOverlimits"
+              units="none"
+              displayType="summary"
+              defaultOn="false"
+              defaultInterval="60000"
+              category="performance" />
+
+   </server>
+</plugin>
